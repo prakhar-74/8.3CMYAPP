@@ -1,6 +1,6 @@
 pipeline {
   agent any
-  options { timestamps(); ansiColor('xterm'); disableConcurrentBuilds() }
+  options { timestamps(); disableConcurrentBuilds() }
 
   parameters { booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback to previous color') }
 
