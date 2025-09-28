@@ -2,7 +2,9 @@ pipeline {
   agent any
   options { timestamps(); disableConcurrentBuilds() }
 
-  parameters { booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback to previous color') }
+  parameters {
+    booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Rollback to previous color without building')
+  }
 
   environment {
     APP_NAME     = 'myapp'
@@ -10,6 +12,7 @@ pipeline {
     BUILD_TAGGED = "${env.IMAGE_BASE}:b${env.BUILD_NUMBER}"
     BLUE_NAME    = "${env.APP_NAME}-blue"
     GREEN_NAME   = "${env.APP_NAME}-green"
+    // Ports: LIVE=3000, BLUE=3001, GREEN=3002
   }
 
   stages {
@@ -18,18 +21,20 @@ pipeline {
         bat '''
         echo == Prepare ==
         if not exist tmp mkdir tmp
-        if not exist tmp\\current_color.txt (echo blue > tmp\\current_color.txt)
+        rem create file with NO trailing space
+        if not exist tmp\\current_color.txt ( > tmp\\current_color.txt echo blue )
+        rem show value
         type tmp\\current_color.txt
         '''
       }
       post { always { archiveArtifacts artifacts: 'tmp/current_color.txt', onlyIfSuccessful: false } }
     }
 
-    stage('Build & Test') {
+    stage('Build ^& Test') {
       when { expression { return !params.ROLLBACK } }
       steps {
         bat '''
-        echo == Build & Test ==
+        echo == Build ^& Test ==
         if exist package.json (
           call npm ci || call npm install
           call npm test || exit /b 0
@@ -38,6 +43,7 @@ pipeline {
         )
         '''
       }
+      post { always { junit allowEmptyResults: true, testResults: 'reports/junit/*.xml' } }
     }
 
     stage('Package Image') {
@@ -64,7 +70,12 @@ CMD [ "npm", "start" ]'''
         bat '''
         setlocal ENABLEDELAYEDEXPANSION
         echo == Blue/Green deploy ==
-        for /f "usebackq tokens=*" %%i in ("tmp\\current_color.txt") do set CUR=%%i
+
+        rem READ & TRIM current_color (strips spaces/tabs)
+        for /f "usebackq tokens=* delims=" %%i in ("tmp\\current_color.txt") do set CUR=%%i
+        set "CUR=!CUR: =!"
+        set "CUR=!CUR:	=!"  rem also strip tabs just in case
+
         if /i "!CUR!"=="blue" (
           set CANDIDATE=green
           set PORT=3002
@@ -74,6 +85,7 @@ CMD [ "npm", "start" ]'''
           set PORT=3001
           set NAME=%BLUE_NAME%
         )
+
         echo Current LIVE color: !CUR!
         echo Candidate color: !CANDIDATE! on port !PORT!
 
@@ -87,7 +99,9 @@ CMD [ "npm", "start" ]'''
           docker run -d --name "!NAME!" -p !PORT!:3000 "%BUILD_TAGGED%"
         )
 
-        timeout /t 2 >nul
+        rem sleep 2s (use ping instead of timeout to avoid redirection error)
+        ping -n 3 127.0.0.1 >nul
+
         docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Ports}}"
         endlocal
         '''
@@ -124,7 +138,11 @@ CMD [ "npm", "start" ]'''
       steps {
         bat '''
         setlocal ENABLEDELAYEDEXPANSION
-        for /f "usebackq tokens=*" %%i in ("tmp\\current_color.txt") do set CUR=%%i
+
+        for /f "usebackq tokens=* delims=" %%i in ("tmp\\current_color.txt") do set CUR=%%i
+        set "CUR=!CUR: =!"
+        set "CUR=!CUR:	=!"
+
         if /i "!CUR!"=="blue" (
           set OLD_NAME=%BLUE_NAME%
           set NEW_NAME=%GREEN_NAME%
@@ -137,11 +155,13 @@ CMD [ "npm", "start" ]'''
 
         echo == Release: LIVE -> !NEW_COLOR! ==
         docker rm -f live 2>nul
-        for /f "usebackq tokens=*" %%I in (`docker inspect --format="{{.Image}}" !NEW_NAME!`) do set CID=%%I
+
+        for /f "usebackq tokens=* delims=" %%I in (`docker inspect --format="{{.Image}}" !NEW_NAME!`) do set CID=%%I
         docker run -d --name live -p 3000:3000 "!CID!"
 
-        echo !NEW_COLOR! > tmp\\current_color.txt
+        > tmp\\current_color.txt echo !NEW_COLOR!
         type tmp\\current_color.txt
+
         docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Ports}}"
         endlocal
         '''
