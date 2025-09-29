@@ -119,6 +119,17 @@ CMD [ "npm", "start" ]'''
         '''
       }
     }
+    stage('Security Scan (Trivy)') {
+      steps {
+        bat '''
+        echo == Trivy image scan ==
+        docker pull aquasec/trivy:latest
+        docker run --rm ^
+          -v %CD%\\tmp:/root/.cache/ ^
+          aquasec/trivy:latest image --no-progress --format table %BUILD_TAGGED% || exit /b 0
+        '''
+      }
+    }
 
     stage('Manual Approval to Promote') {
       steps {
