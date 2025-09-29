@@ -171,7 +171,33 @@ CMD [ "npm", "start" ]'''
   }
 
   post {
-    success { echo "8.3C pipeline finished successfully." }
-    failure { echo "8.3C pipeline failed. Check logs." }
+    success {
+      echo "8.3C pipeline finished successfully."
+      emailext(
+        subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: """Build succeeded.
+
+Job: ${env.JOB_NAME}
+Build: #${env.BUILD_NUMBER}
+URL:   ${env.BUILD_URL}""",
+        to: "any@address.com",
+        attachLog: true,
+        compressLog: true
+      )
+    }
+    failure {
+      echo "8.3C pipeline failed. Check logs."
+      emailext(
+        subject: "FAILURE: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: """Build failed.
+
+Job: ${env.JOB_NAME}
+Build: #${env.BUILD_NUMBER}
+URL:   ${env.BUILD_URL}""",
+        to: "any@address.com",
+        attachLog: true,
+        compressLog: true
+      )
+    }
   }
 }
