@@ -43,7 +43,43 @@ pipeline {
         )
         '''
       }
-      post { always { junit allowEmptyResults: true, testResults: 'reports/junit/*.xml' } }
+      post {
+        success {
+          emailext(
+            subject: "TESTS SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body: """Unit/Integration tests passed.
+
+Job: ${env.JOB_NAME}
+Build: #${env.BUILD_NUMBER}
+URL:   ${env.BUILD_URL}
+
+Full console log attached (compressed).""",
+            to: "anything@anywhere.com",
+            mimeType: 'text/plain',
+            attachLog: true,
+            compressLog: true
+          )
+        }
+        failure {
+          emailext(
+            subject: "TESTS FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body: """Tests failed.
+
+Job: ${env.JOB_NAME}
+Build: #${env.BUILD_NUMBER}
+URL:   ${env.BUILD_URL}
+
+Full console log attached (compressed).""",
+            to: "anything@anywhere.com",
+            mimeType: 'text/plain',
+            attachLog: true,
+            compressLog: true
+          )
+        }
+        always {
+          junit allowEmptyResults: true, testResults: 'reports/junit/*.xml'
+        }
+      }
     }
 
     stage('Package Image') {
@@ -119,6 +155,7 @@ CMD [ "npm", "start" ]'''
         '''
       }
     }
+
     stage('Security Scan (Trivy)') {
       steps {
         bat '''
@@ -128,6 +165,40 @@ CMD [ "npm", "start" ]'''
           -v %CD%\\tmp:/root/.cache/ ^
           aquasec/trivy:latest image --no-progress --format table %BUILD_TAGGED% || exit /b 0
         '''
+      }
+      post {
+        success {
+          emailext(
+            subject: "SECURITY SCAN SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body: """Trivy image scan completed successfully.
+
+Job: ${env.JOB_NAME}
+Build: #${env.BUILD_NUMBER}
+URL:   ${env.BUILD_URL}
+
+Full console log attached (compressed).""",
+            to: "anything@anywhere.com",
+            mimeType: 'text/plain',
+            attachLog: true,
+            compressLog: true
+          )
+        }
+        failure {
+          emailext(
+            subject: "SECURITY SCAN FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body: """Trivy stage failed (see log).
+
+Job: ${env.JOB_NAME}
+Build: #${env.BUILD_NUMBER}
+URL:   ${env.BUILD_URL}
+
+Full console log attached (compressed).""",
+            to: "anything@anywhere.com",
+            mimeType: 'text/plain',
+            attachLog: true,
+            compressLog: true
+          )
+        }
       }
     }
 
@@ -191,7 +262,8 @@ CMD [ "npm", "start" ]'''
 Job: ${env.JOB_NAME}
 Build: #${env.BUILD_NUMBER}
 URL:   ${env.BUILD_URL}""",
-        to: "any@address.com",
+        to: "anything@anywhere.com",
+        mimeType: 'text/plain',
         attachLog: true,
         compressLog: true
       )
@@ -205,7 +277,8 @@ URL:   ${env.BUILD_URL}""",
 Job: ${env.JOB_NAME}
 Build: #${env.BUILD_NUMBER}
 URL:   ${env.BUILD_URL}""",
-        to: "any@address.com",
+        to: "anything@anywhere.com",
+        mimeType: 'text/plain',
         attachLog: true,
         compressLog: true
       )
